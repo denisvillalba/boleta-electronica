@@ -17,9 +17,15 @@ import pe.vr.boleta.model.DetalleBoleta;
 import pe.vr.boleta.model.Producto;
 
 import com.vaadin.flow.component.button.Button;
+import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.notification.Notification;
 
 import com.vaadin.flow.component.grid.Grid;
+
+import com.vaadin.flow.component.textfield.TextField;
+
+import com.vaadin.flow.component.radiobutton.RadioButtonGroup;
+
 
 @Route("boleta")
 @PageTitle("Nueva Boleta")
@@ -37,6 +43,15 @@ public class BoletaView extends VerticalLayout {
         H2 titulo = new H2("Nueva Boleta de Venta");
         setAlignItems(Alignment.CENTER);
         add(titulo);
+
+        TextField txtDni = new TextField("DNI del cliente (opcional)");
+        txtDni.setAllowedCharPattern("[0-9]");
+        txtDni.setMaxLength(8);
+
+        TextField txtNombre = new TextField("Nombre del cliente (opcional)");
+        txtNombre.setWidth("300px");
+
+        add(txtDni, txtNombre);
 
         ComboBox<Producto> cboProducto = new ComboBox<>("Producto");
         cboProducto.setItems(productoService.listar());
@@ -89,8 +104,30 @@ public class BoletaView extends VerticalLayout {
         add(btnAgregar);
 
         add(gridDetalle);
+        gridDetalle.setHeight("250px");
 
         add(lblTotal);
 
+        RadioButtonGroup<String> rbPago = new RadioButtonGroup<>("Forma de pago");
+        rbPago.setItems("Efectivo", "Yape");
+        rbPago.setValue("Efectivo");
+        add(rbPago);
+
+        Button btnEmitir = new Button("Emitir boleta");
+        btnEmitir.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+        btnEmitir.getStyle().set("margin-top", "20px");
+        btnEmitir.addClickListener(e -> {
+            String dni = txtDni.getValue().trim();
+            if (!dni.isEmpty() && dni.length() != 8) {
+                Notification.show("El DNI debe tener 8 dígitos");
+                return;
+            }
+            Notification.show("DNI correcto");
+        });
+
+        add(btnEmitir);
+
     }
+
+    
 }

@@ -367,7 +367,8 @@ public Firestore firestore() throws IOException {
 **Resultado:** `.\mvnw.cmd test -Dtest="FirebaseConexionTest"` → Tests run: 1, Failures: 0 → BUILD SUCCESS. El documento se ve en la consola de Firebase → Firestore Database → Datos.
 **Lección:** guardar el archivo (Ctrl + S) antes de ejecutar; si no, Maven dice "No tests matching". No escribir dos comandos en una sola línea. Los `WARNING` de grpc-netty y `sun.misc.Unsafe` son avisos de Java 25, no errores.
 
-### Paso 40: ProductoService recibe Firestore (en curso)
+
+### Paso 40: ProductoService recibe Firestore
 **Dónde:** `src\main\java\pe\vr\boleta\service\ProductoService.java`
 - `Producto` (`pe.vr.boleta.model`) ya servía para Firestore: constructor vacío + getters/setters.
 - Diseño: colección `productos`, ID de cada documento = código del producto.
@@ -381,22 +382,276 @@ public ProductoService(Firestore db) {
 }
 ```
 **Lección:** Spring entrega el `Firestore` al constructor, igual que entrega `ProductoService` a las vistas.
-**Pendiente:** cambiar los métodos para usar Firestore y ajustar las pruebas que usan `new ProductoService()`.
+
+### Paso 41: Guardar productos en Firestore
+**Para qué:** que los productos no se pierdan al reiniciar la app.
+**Dónde:** `ProductoService.java` → método `guardar()`
+```java
+db.collection("productos").document(producto.getCodigo()).set(producto).get();
+```
+**Resultado:** el producto aparece en la consola de Firebase → Firestore Database → colección `productos`, con el código como ID.
+**Lección:** `document(id).set(objeto)` crea o reemplaza el documento. Usar el código como ID evita duplicados.
+
+### Pasos 42–43: Leer productos desde Firestore
+**Para qué:** que la tabla de productos y la boleta usen los datos guardados en la nube.
+**Dónde:** `ProductoService.java` → métodos `listar()` y `buscarPorCodigo()`
+```java
+// listar()
+return db.collection("productos").get().get().toObjects(Producto.class);
+
+// buscarPorCodigo()
+DocumentSnapshot doc = db.collection("productos").document(codigo).get().get();
+return doc.exists() ? doc.toObject(Producto.class) : null;
+```
+**Resultado:** los productos siguen ahí después de reiniciar la app, y la boleta los muestra en la lista.
+**Lección:** el primer `get()` prepara la consulta y el segundo espera la respuesta. `toObjects()` convierte los documentos en objetos Java (por eso hace falta el constructor vacío).
+
+### Paso 44: Descontar stock en Firestore
+**Dónde:** `ProductoService.java` → método `descontarStock()`
+```java
+db.collection("productos").document(codigo).update("stock", nuevoStock).get();
+```
+**Resultado:** al vender, el stock baja también en la nube.
+**Lección:** `update("campo", valor)` cambia un solo campo sin reescribir todo el documento.
+
+### Paso 45: Rechazar código repetido
+**Dónde:** `ProductoService.java` → método `guardar()`
+```java
+if (buscarPorCodigo(producto.getCodigo()) != null) {
+    throw new IllegalArgumentException("Ya existe un producto con código " + producto.getCodigo());
+}
+```
+**Resultado:** no se puede registrar dos veces el mismo código. Queda como respaldo del código automático.
+**Lección:** validar en el servicio, no solo en la pantalla, protege los datos aunque la pantalla cambie.
+
+### Pasos 46–48: Código de producto automático (P001, P002…)
+**Para qué:** que el dueño del negocio no tenga que inventar ni escribir códigos.
+**Dónde:** `ProductoService.java` (método nuevo `siguienteCodigo()`) y `views\ProductosView.java` (campo `codigo`)
+```java
+// ProductoService.siguienteCodigo()
+int max = listar().stream()
+        .map(Producto::getCodigo)
+        .filter(c -> c != null && c.matches("P\\d+"))
+        .mapToInt(c -> Integer.parseInt(c.substring(1)))
+        .max().orElse(0);
+return String.format("P%03d", max + 1);
+
+// ProductosView: en el constructor y después de Guardar
+codigo.setValue(productoService.siguienteCodigo());
+codigo.setReadOnly(true);
+```
+**Resultado:** el campo Código muestra el siguiente número (P006), es de solo lectura y pasa solo a P007 después de Guardar.
+**Lección:** `String.format("P%03d", n)` completa con ceros a la izquierda (1 → P001).
+
+### Paso 49: Pruebas de BoletaService con Mockito
+**Para qué:** probar las reglas de la boleta sin conectarse a Firebase, para que las pruebas también funcionen en Render.
+**Dónde:** `src\test\java\pe\vr\boleta\service\BoletaServiceTest.java`
+```java
+productoService = mock(ProductoService.class);
+when(productoService.buscarPorCodigo("P001")).thenReturn(vitamina);   // stock 10
+when(productoService.buscarPorCodigo("P002")).thenReturn(alimento);   // stock 2
+
+verify(productoService).descontarStock("P001", 3);
+verify(productoService, never()).descontarStock(anyString(), anyInt());
+```
+**Resultado:** las 4 pruebas pasan (emite y descuenta, correlativo, no emite vacía, no descuenta si falta stock).
+**Lección:** un *mock* es un servicio simulado: responde lo que le digo con `when(...)` y con `verify(...)` compruebo si fue llamado. `ProductoServiceTest` se eliminó porque probaba la lista en memoria, que ya no existe.
+
+### Paso 50: Prueba de conexión solo en mi PC
+**Dónde:** `src\test\java\pe\vr\boleta\FirebaseConexionTest.java`
+```java
+assumeTrue(new File("D:/claves/boleta-electronica.json").exists());
+```
+**Resultado:** en mi PC la prueba corre. Donde no está la clave (Render), se salta sola en vez de fallar.
+**Lección:** `assumeTrue` marca la prueba como "omitida", no como "fallida".
+
+### Paso 51: Prueba de arranque solo con clave
+**Dónde:** `src\test\java\pe\vr\boleta\BoletaApplicationTests.java`
+```java
+@EnabledIf("hayClaveFirebase")
+class BoletaApplicationTests {
+
+    static boolean hayClaveFirebase() {
+        return new File("D:/claves/boleta-electronica.json").exists();
+    }
+}
+```
+**Resultado:** `.\mvnw.cmd test` → todas las pruebas OK.
+**Lección:** `@EnabledIf` (de JUnit) decide antes de arrancar Spring si la prueba se ejecuta; así no intenta conectarse a Firebase sin clave.
+
+---
+
+### ETAPA 1: Publicar en Render (versión de prueba)
+
+### Paso 52: Revisar el pom.xml
+**Dónde:** `pom.xml`
+**Resultado:** no hace falta un perfil `production`: `vaadin-dev` es `optional` y el `vaadin-maven-plugin` ya tiene la meta `build-frontend`.
+
+### Pasos 53–54: Generar el .jar (error de Vite)
+**Para qué:** juntar toda la app en un solo archivo `.jar` para publicarla.
+**Dónde:** terminal, en `D:\eval\Boleta_electronica`
+```
+.\mvnw.cmd clean package
+```
+**Problema:** `Unable to locate Vite executable`.
+**Diagnóstico:**
+| Comando | Resultado |
+|---|---|
+| `Test-Path node_modules` | False |
+| `node -v` | v22.16.0 |
+| `npm -v` | 10.9.2 |
+| `Test-Path package.json` | False |
+
+**Solución:**
+```
+.\mvnw.cmd vaadin:prepare-frontend
+.\mvnw.cmd clean package -DskipTests > build.log 2>&1
+Select-String -Path build.log -Pattern "npm|vite|bundle"
+```
+El log dijo: *"A production mode bundle build is not needed"*.
+**Resultado:** BUILD SUCCESS → `target\boleta-0.0.1-SNAPSHOT.jar` (~103 MB).
+**Lección:** si la app solo usa componentes estándar de Vaadin, se usa un frontend ya compilado y no hacen falta npm ni Vite. Guardar el log en un archivo y filtrarlo con `Select-String` ayuda a encontrar la causa real.
+
+### Paso 55: Probar el .jar
+**Dónde:** terminal
+```
+java -jar target\boleta-0.0.1-SNAPSHOT.jar
+```
+**Resultado:** "Vaadin is running in production mode", "Tomcat started on port 8080", "Started BoletaApplication". En `/boleta` el combo carga los productos de Firestore. Detener con `Ctrl + C`.
+**Lección:** esto es lo mismo que hará Render; si funciona en la PC, en Render solo puede fallar la configuración (clave o puerto).
+
+### Paso 56: Dockerfile
+**Para qué:** indicarle a Render cómo construir y ejecutar la app.
+**Dónde:** archivo nuevo `Dockerfile` (sin extensión) en la raíz
+```
+New-Item -ItemType File -Name Dockerfile
+code Dockerfile
+```
+```dockerfile
+# ---------- Etapa 1: construir el .jar ----------
+FROM eclipse-temurin:25-jdk AS build
+WORKDIR /app
+COPY . .
+RUN chmod +x mvnw && ./mvnw clean package -DskipTests
+
+# ---------- Etapa 2: ejecutar la app ----------
+FROM eclipse-temurin:25-jre
+WORKDIR /app
+COPY --from=build /app/target/boleta-0.0.1-SNAPSHOT.jar app.jar
+EXPOSE 8080
+ENTRYPOINT ["sh", "-c", "java -Dserver.port=${PORT:-8080} -jar app.jar"]
+```
+**Lección:** dos etapas: la primera (JDK) compila y la segunda (JRE, más liviana) solo ejecuta. El `.jar` se construye dentro de Render porque pesa 103 MB y GitHub no acepta archivos de más de 100 MB. `${PORT:-8080}` usa el puerto de Render o 8080 por defecto.
+
+### Paso 57: .dockerignore
+**Para qué:** que Docker no copie archivos pesados o sensibles.
+**Dónde:** archivo nuevo `.dockerignore` en la raíz
+```
+target/
+build.log
+.vscode/
+.idea/
+*.log
+node_modules/
+*.json
+!package.json
+!tsconfig.json
+```
+**Lección:** `*.json` protege contra copiar una clave de Firebase por error; `!` marca una excepción.
+
+### Pasos 58–59: Revisar y completar .gitignore
+**Dónde:** `.gitignore` (ya existía, lo creó Spring Initializr y excluía `target/`)
+Se agregó al final:
+```
+### Boleta - exclusiones extra ###
+build.log
+*.log
+*.json
+!package.json
+!tsconfig.json
+```
+**Lección:** una clave de Firebase subida a GitHub, aunque sea una vez, da acceso a la base de datos.
+
+### Paso 60: Repositorio Git local
+**Dónde:** terminal
+```
+git init -b main
+```
+**Resultado:** `Initialized empty Git repository in D:/eval/Boleta_electronica/.git/`
+**Lección:** `git init` solo afecta a la carpeta actual; mis otros proyectos tienen su propio `.git` y no se tocan.
+
+### Paso 61: Repositorio en GitHub
+**Dónde:** github.com → **New**
+| Campo | Valor |
+|---|---|
+| Nombre | `boleta-electronica` |
+| Visibilidad | Private |
+| README / .gitignore / licencia | ninguno (vacío) |
+
+**Resultado:** `https://github.com/denisvillalba/boleta-electronica.git`
+**Lección:** el repositorio debe nacer vacío para no chocar con los archivos locales; es privado porque el sistema se piensa vender.
+
+### Paso 62: .gitattributes
+**Para qué:** Render usa Linux; si `mvnw` llega con saltos de línea de Windows (CRLF) falla con *"bad interpreter"*.
+**Dónde:** terminal
+```
+Set-Content .gitattributes "mvnw text eol=lf`n*.cmd text eol=crlf`nDockerfile text eol=lf"
+```
+**Resultado:** `mvnw` y `Dockerfile` en formato Linux; `mvnw.cmd` en formato Windows.
+
+### Paso 63: Revisar qué se sube
+**Dónde:** terminal
+```
+git add .
+git diff --cached --name-only | Select-String "target/|\.json|\.log|\.jar"
+git diff --cached --name-only | Measure-Object | Select-Object Count
+```
+**Problema:** 494 archivos, 470 de ellos en `src\main\frontend\generated\` (los genera Vaadin).
+**Solución:**
+```
+Add-Content .gitignore "src/main/frontend/generated/"
+git rm -r --cached src/main/frontend/generated
+git add .
+```
+**Resultado:** 24 archivos, sin `.jar`, logs ni claves.
+**Lección:** revisar siempre antes del primer commit. `git rm --cached` saca archivos del commit sin borrarlos del disco.
+
+### Paso 64: Primer commit
+**Dónde:** terminal
+```
+git commit -m "Versión inicial: productos y boleta con Vaadin + Firebase, Dockerfile para Render"
+```
+**Resultado:** commit `9716c45`, 24 archivos, 1914 líneas.
+
+### Paso 65: Subir a GitHub (en curso)
+**Dónde:** terminal
+```
+git remote add origin https://github.com/denisvillalba/boleta-electronica.git
+git remote -v
+git push -u origin main
+```
+**Resultado esperado:** `* [new branch] main -> main`
+**Lección:** `origin` es el nombre de la conexión con GitHub; `-u` enlaza `main` local con la de GitHub y después basta `git push`.
 
 ---
 
 ## Parte 2: Documentación del sistema
 
 ### Objetivo
-App web para emitir boletas de venta en PDF. El dueño del negocio administra sus productos y stock; la boleta usa esos productos.
+App web para emitir boletas de venta en PDF. El dueño del negocio administra sus productos y stock; la boleta usa esos productos. Se piensa vender a varios negocios (bodega, agroveterinaria, municipalidad, universidad).
 
 ### Tecnologías
-- Java 25
-- Spring Boot 4.1.1
-- Vaadin 25.3.2 (pantallas web en Java)
-- JUnit (pruebas automáticas)
-- Firestore (base de datos NoSQL, plan gratuito) — pendiente
-- Render (publicación, plan gratuito) — pendiente
+| Tecnología | Uso | Estado |
+|---|---|---|
+| Java 25 | lenguaje | ✅ |
+| Spring Boot 4.1.1 | base de la app, inyección de dependencias | ✅ |
+| Vaadin 25.3.2 | pantallas web en Java | ✅ |
+| Firebase Firestore | base de datos NoSQL en la nube (plan Spark gratis) | ✅ |
+| firebase-admin 9.11.0 | conexión Java ↔ Firestore | ✅ |
+| JUnit + Mockito | pruebas automáticas | ✅ |
+| Docker | empaquetar la app para Render | ✅ |
+| Git + GitHub | control de versiones (repo privado) | ✅ |
+| Render | publicación (plan gratis) | ⏳ |
 
 ### Estructura de carpetas
 ```
@@ -407,42 +662,114 @@ Boleta_electronica\
 │   ├── main\
 │   │   ├── java\pe\vr\boleta\
 │   │   │   ├── BoletaApplication.java     ← arranca la app y conecta los estilos
+│   │   │   ├── config\
+│   │   │   │   └── FirebaseConfig.java    ← conecta con Firestore usando la clave
 │   │   │   ├── model\
 │   │   │   │   ├── Boleta.java            ← boleta completa (cabecera + detalles)
 │   │   │   │   ├── DetalleBoleta.java     ← línea de la boleta (producto vendido)
 │   │   │   │   └── Producto.java          ← datos del producto
 │   │   │   ├── service\
 │   │   │   │   ├── BoletaService.java     ← emite boletas (valida, descuenta, numera)
-│   │   │   │   └── ProductoService.java   ← guarda, lista, busca y descuenta stock (en memoria)
+│   │   │   │   └── ProductoService.java   ← guarda, lista, busca, descuenta stock y genera código (Firestore)
 │   │   │   └── views\
-│   │   │       ├── BoletaView.java        ← pantalla para armar y emitir la boleta (/boleta)
-│   │   │       └── ProductosView.java     ← pantalla de registro y tabla de productos (/)
-│   │   └── resources\META-INF\resources\
-│   │       └── styles.css                 ← estilos (botones, efectos)
+│   │   │       ├── BoletaView.java        ← pantalla para armar la boleta (/boleta)
+│   │   │       └── ProductosView.java     ← registro y tabla de productos (/)
+│   │   ├── frontend\generated\            ← lo genera Vaadin (no se sube a GitHub)
+│   │   └── resources\
+│   │       ├── application.properties     ← ruta de la clave (firebase.credenciales)
+│   │       └── META-INF\resources\
+│   │           └── styles.css             ← estilos (botones, efectos)
 │   └── test\java\pe\vr\boleta\
-│       ├── BoletaApplicationTests.java    ← prueba que la app arranque (creada por Spring)
+│       ├── BoletaApplicationTests.java    ← arranque de la app (solo si hay clave)
+│       ├── FirebaseConexionTest.java      ← escribe y lee en Firestore (solo si hay clave)
 │       ├── model\
-│       │   └── BoletaTest.java            ← prueba subtotales y total
+│       │   └── BoletaTest.java            ← subtotales y total
 │       └── service\
-│           ├── BoletaServiceTest.java     ← prueba emisión, correlativo y validaciones
-│           └── ProductoServiceTest.java   ← prueba descuento de stock
-├── mvnw.cmd                               ← Maven Wrapper (Windows)
+│           └── BoletaServiceTest.java     ← emisión, correlativo y stock (con Mockito)
+├── target\                                ← .jar generado (no se sube)
+├── .dockerignore                          ← lo que Docker no copia
+├── .gitattributes                         ← saltos de línea (mvnw en formato Linux)
+├── .gitignore                             ← lo que Git no sube
+├── Dockerfile                             ← receta para construir y ejecutar en Render
+├── mvnw / mvnw.cmd                        ← Maven Wrapper (Linux / Windows)
 └── pom.xml                                ← librerías del proyecto
+
+Fuera del proyecto:
+D:\claves\boleta-electronica.json          ← clave de Firebase (NUNCA dentro del proyecto)
 ```
+
+### Base de datos (Firestore)
+| Colección | ID del documento | Campos |
+|---|---|---|
+| `productos` | código (P001, P002…) | codigo, nombre, descripcion, unidadMedida, precio, stock |
+| `pruebas` | `conexion` | mensaje (solo para la prueba de conexión) |
+| `boletas` | ⏳ pendiente | numero, fecha, cliente, formaPago, total, detalles |
+
+### Configuración
+| Dato | Dónde | Valor |
+|---|---|---|
+| Ruta de la clave | `application.properties` | `${FIREBASE_CREDENCIALES:D:/claves/boleta-electronica.json}` |
+| En mi PC | por defecto | `D:/claves/boleta-electronica.json` |
+| En Render | variable de entorno + Secret File | `FIREBASE_CREDENCIALES` ⏳ |
+| Puerto | `Dockerfile` | `${PORT:-8080}` |
 
 ### Cómo ejecutarlo
 En la terminal, ubicada en `D:\eval\Boleta_electronica`:
+
+**Modo desarrollo:**
 ```
 .\mvnw.cmd spring-boot:run
+```
+**Modo producción (.jar):**
+```
+.\mvnw.cmd clean package
+java -jar target\boleta-0.0.1-SNAPSHOT.jar
 ```
 - Productos: http://localhost:8080
 - Boleta: http://localhost:8080/boleta
 
-Pruebas automáticas:
+**Pruebas automáticas:**
 ```
-.\mvnw.cmd test -Dtest="BoletaTest,ProductoServiceTest,BoletaServiceTest"
+.\mvnw.cmd test
 ```
 
+### Cómo publicar cambios
+```
+git add .
+git commit -m "descripción del cambio"
+git push
+```
+Render vuelve a construir la app con cada `push` (cuando esté configurado).
+
+### Reglas de negocio
+- El código de producto es automático (P001, P002…) y no se repite.
+- No se emite una boleta vacía.
+- Antes de descontar se verifica el stock de **todos** los productos; si uno no alcanza, no se descuenta ninguno.
+- Numeración: `B001-` + correlativo de 8 dígitos.
+- La boleta copia nombre y precio del producto: si luego cambia el precio, la boleta conserva el original.
+- El DNI del cliente **no es obligatorio** ni se rellena con ceros; se llena solo cuando el negocio lo requiere.
+- Pago presencial: efectivo o Yape (QR del negocio); tarjeta con pasarela en una segunda etapa.
+
+### Seguridad
+- La clave de Firebase está fuera del proyecto y excluida en `.gitignore` y `.dockerignore` (`*.json`).
+- Firestore en modo producción: solo el servidor Java entra, con la cuenta de servicio.
+- Repositorio de GitHub privado.
+- Pendiente: login de usuarios y separar los datos de cada negocio.
+
 ### Módulos
-- **Productos (inventario):** registrar, listar en tabla y validar campos ✅ (datos en memoria; Firestore pendiente).
-- **Boleta:** modelo, servicio y pruebas ✅. Pantalla en construcción: producto y cantidad ✅; Agregar, tabla del detalle, cliente, forma de pago, emitir y PDF ⏳.
+- **Productos (inventario):** registrar con código automático, listar, validar campos y guardar en Firestore ✅
+- **Boleta:** modelo, servicio y pruebas ✅. Pantalla: producto, cantidad, Agregar, tabla del detalle y total ✅; datos del cliente, forma de pago, botón Emitir, guardar en Firestore y PDF ⏳
+- **Publicación:** .jar, Dockerfile y GitHub ✅; Render ⏳
+
+### Pendientes
+| Orden | Tarea |
+|---|---|
+| 1 | Subir a GitHub (`git push`) |
+| 2 | Crear el servicio en Render (Docker, repo privado) |
+| 3 | Clave como Secret File + variable `FIREBASE_CREDENCIALES` |
+| 4 | Probar la URL pública |
+| 5 | Login |
+| 6 | Datos del cliente (opcionales) y forma de pago |
+| 7 | Botón Emitir y guardar boletas en Firestore |
+| 8 | PDF de la boleta (y envío por correo) |
+| 9 | Varios negocios: un Firebase por negocio o uno multi-empresa |
