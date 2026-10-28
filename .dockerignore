@@ -1,0 +1,9 @@
+target/
+build.log
+.vscode/
+.idea/
+*.log
+node_modules/
+*.json
+!package.json
+!tsconfig.json

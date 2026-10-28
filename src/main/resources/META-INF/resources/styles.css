@@ -1,0 +1,16 @@
+vaadin-button.btn-hundir {
+    cursor: pointer;
+    min-width: 110px;
+    transition: transform 0.1s, box-shadow 0.1s;
+}
+
+vaadin-button.btn-hundir:hover {
+    transform: translateY(1px);
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+vaadin-button.btn-hundir[disabled]:hover {
+    transform: none;
+    box-shadow: none;
+    cursor: not-allowed;
+}
