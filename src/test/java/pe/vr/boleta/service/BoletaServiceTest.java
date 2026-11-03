@@ -9,24 +9,40 @@ import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.never;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import com.google.api.core.ApiFutures;
+import com.google.cloud.firestore.Firestore;
+
 import pe.vr.boleta.model.Boleta;
 import pe.vr.boleta.model.DetalleBoleta;
 import pe.vr.boleta.model.Producto;
+
+import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
+
+
+
 
 class BoletaServiceTest {
 
     private ProductoService productoService;
     private BoletaService boletaService;
 
+    @SuppressWarnings("unchecked")
     @BeforeEach
     void preparar() {
         productoService = mock(ProductoService.class);
-        boletaService = new BoletaService(productoService);
+        /*servicio = new BoletaService(productoService, mock(Firestore.class, RETURNS_DEEP_STUBS)); */
+        Firestore db = mock(Firestore.class, RETURNS_DEEP_STUBS);
+        when(db.<Integer>runTransaction(any())).thenReturn(
+                ApiFutures.immediateFuture(1),
+                ApiFutures.immediateFuture(2),
+                ApiFutures.immediateFuture(3));
+        boletaService = new BoletaService(productoService, db);
         when(productoService.buscarPorCodigo("P001")).thenReturn(producto("P001", "Vitamina", 10));
         when(productoService.buscarPorCodigo("P002")).thenReturn(producto("P002", "Alimento", 2));
     }

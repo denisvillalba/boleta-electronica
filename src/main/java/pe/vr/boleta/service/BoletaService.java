@@ -11,6 +11,12 @@ import pe.vr.boleta.model.Boleta;
 import pe.vr.boleta.model.DetalleBoleta;
 import pe.vr.boleta.model.Producto;
 
+import com.google.cloud.firestore.Firestore;
+
+import java.util.Map;
+import com.google.cloud.firestore.DocumentReference;
+import com.google.cloud.firestore.DocumentSnapshot;
+
 @Service
 public class BoletaService {
 
@@ -20,10 +26,11 @@ public class BoletaService {
 
     private final List<Boleta> boletas = new ArrayList<>();
     private final ProductoService productoService;
-    private int correlativo = 0;
-
-    public BoletaService(ProductoService productoService) {
+    private final Firestore db;
+    
+    public BoletaService(ProductoService productoService, Firestore db) {
         this.productoService = productoService;
+        this.db = db;
     }
 
     public Boleta emitir(Boleta boleta) {
@@ -46,12 +53,37 @@ public class BoletaService {
             productoService.descontarStock(d.getCodigo(), d.getCantidad());
         }
 
-        correlativo++;
-        boleta.setNumero(SERIE + "-" + String.format("%08d", correlativo));
+        int numero = siguienteCorrelativo();
+        boleta.setNumero(SERIE + "-" + String.format("%08d", numero));
         boleta.setFecha(LocalDateTime.now().format(FORMATO_FECHA));
         boleta.calcularTotal();
+
+       
+
+        try {
+            db.collection("boletas").document(boleta.getNumero()).set(boleta).get();
+            
+        } catch (Exception e) {
+            throw new RuntimeException("No se pudo guardar la boleta en Firestore", e);
+        }
+
         boletas.add(boleta);
         return boleta;
+    }
+
+    private int siguienteCorrelativo() {
+        DocumentReference ref = db.collection("contadores").document("boletas");
+        try {
+            return db.runTransaction(tx -> {
+                DocumentSnapshot doc = tx.get(ref).get();
+                Long ultimo = doc.exists() ? doc.getLong("ultimo") : null;
+                long nuevo = (ultimo == null ? 0 : ultimo) + 1;
+                tx.set(ref, Map.of("ultimo", nuevo));
+                return (int) nuevo;
+            }).get();
+        } catch (Exception e) {
+            throw new RuntimeException("No se pudo obtener el número de boleta", e);
+        }
     }
 
     public List<Boleta> listar() {

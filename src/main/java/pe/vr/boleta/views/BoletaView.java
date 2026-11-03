@@ -116,13 +116,32 @@ public class BoletaView extends VerticalLayout {
         Button btnEmitir = new Button("Emitir boleta");
         btnEmitir.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
         btnEmitir.getStyle().set("margin-top", "20px");
+        
         btnEmitir.addClickListener(e -> {
             String dni = txtDni.getValue().trim();
             if (!dni.isEmpty() && dni.length() != 8) {
                 Notification.show("El DNI debe tener 8 dígitos");
                 return;
             }
-            Notification.show("DNI correcto");
+            boletaActual.setClienteDni(dni.isEmpty() ? null : dni);
+            String nombre = txtNombre.getValue().trim();
+            boletaActual.setClienteNombre(nombre.isEmpty() ? null : nombre);
+            boletaActual.setFormaPago(rbPago.getValue());
+           
+            try {
+                Boleta emitida = boletaService.emitir(boletaActual);
+                Notification.show("Boleta emitida: " + emitida.getNumero());
+                boletaActual = new Boleta();
+                gridDetalle.setItems(boletaActual.getDetalles());
+                lblTotal.setText("Total: S/ 0.00");
+                txtDni.clear();
+                txtNombre.clear();
+                rbPago.setValue("Efectivo");
+                cboProducto.setItems(productoService.listar());
+            } catch (RuntimeException ex) {
+                Notification.show(ex.getMessage());
+            }
+
         });
 
         add(btnEmitir);

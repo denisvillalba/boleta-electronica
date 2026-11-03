@@ -9,6 +9,8 @@ import pe.vr.boleta.model.Producto;
 
 import com.google.cloud.firestore.Firestore;
 
+import com.google.cloud.firestore.DocumentSnapshot;
+
 @Service
 public class ProductoService {
 
@@ -48,13 +50,16 @@ public class ProductoService {
         }
     }
 
-        public Producto buscarPorCodigo(String codigo) {
-        for (Producto p : productos) {
-            if (p.getCodigo().equals(codigo)) {
-                return p;
+    public Producto buscarPorCodigo(String codigo) {
+        try {
+            DocumentSnapshot doc = db.collection("productos").document(codigo).get().get();
+            if (!doc.exists()) {
+                return null;
             }
+            return doc.toObject(Producto.class);
+        } catch (Exception e) {
+            throw new RuntimeException("No se pudo buscar el producto en Firestore", e);
         }
-        return null;
     }
 
     public void descontarStock(String codigo, int cantidad) {
