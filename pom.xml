@@ -52,6 +52,12 @@
             <artifactId>firebase-admin</artifactId>
             <version>9.11.0</version>
         </dependency>
+		<!-- OpenPDF: para generar la boleta en PDF -->
+		<dependency>
+			<groupId>com.github.librepdf</groupId>
+			<artifactId>openpdf</artifactId>
+			<version>2.0.4</version>
+		</dependency>
 
 	</dependencies>
 	<dependencyManagement>
@@ -62,7 +68,7 @@
 				<version>${vaadin.version}</version>
 				<type>pom</type>
 				<scope>import</scope>
-			</dependency>
+			</dependency>		
 		</dependencies>
 	</dependencyManagement>
 

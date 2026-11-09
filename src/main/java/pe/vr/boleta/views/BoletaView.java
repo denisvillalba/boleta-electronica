@@ -6,7 +6,10 @@ import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.component.textfield.IntegerField;
 import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
+import com.vaadin.flow.server.streams.DownloadHandler;
+import com.vaadin.flow.server.streams.DownloadResponse;
 
+import pe.vr.boleta.service.BoletaPdfService;
 import pe.vr.boleta.service.BoletaService;
 import pe.vr.boleta.service.ProductoService;
 
@@ -15,6 +18,8 @@ import com.vaadin.flow.component.combobox.ComboBox;
 import pe.vr.boleta.model.Boleta;
 import pe.vr.boleta.model.DetalleBoleta;
 import pe.vr.boleta.model.Producto;
+
+import java.io.ByteArrayInputStream;
 
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
@@ -26,6 +31,7 @@ import com.vaadin.flow.component.textfield.TextField;
 
 import com.vaadin.flow.component.radiobutton.RadioButtonGroup;
 
+import com.vaadin.flow.component.html.Anchor;
 
 @Route("boleta")
 @PageTitle("Nueva Boleta")
@@ -34,11 +40,14 @@ public class BoletaView extends VerticalLayout {
     private final ProductoService productoService;
     private final BoletaService boletaService;
 
+    private final BoletaPdfService boletaPdfService;
+
     private Boleta boletaActual = new Boleta();
 
-    public BoletaView(ProductoService productoService, BoletaService boletaService) {
+    public BoletaView(ProductoService productoService, BoletaService boletaService, BoletaPdfService boletaPdfService) {
         this.productoService = productoService;
         this.boletaService = boletaService;
+        this.boletaPdfService = boletaPdfService;
 
         H2 titulo = new H2("Nueva Boleta de Venta");
         setAlignItems(Alignment.CENTER);
@@ -113,6 +122,11 @@ public class BoletaView extends VerticalLayout {
         rbPago.setValue("Efectivo");
         add(rbPago);
 
+        // Enlace para descargar el PDF (oculto hasta que se emita una boleta)
+        Anchor lnkPdf = new Anchor();
+        lnkPdf.setText("📄 Descargar PDF");
+        lnkPdf.setVisible(false);
+
         Button btnEmitir = new Button("Emitir boleta");
         btnEmitir.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
         btnEmitir.getStyle().set("margin-top", "20px");
@@ -131,6 +145,17 @@ public class BoletaView extends VerticalLayout {
             try {
                 Boleta emitida = boletaService.emitir(boletaActual);
                 Notification.show("Boleta emitida: " + emitida.getNumero());
+
+                // Generar el PDF y conectarlo al enlace de descarga        
+                byte[] pdf = boletaPdfService.generar(emitida);                 
+                String nombreArchivo = emitida.getNumero() + ".pdf";            
+                lnkPdf.setHref(DownloadHandler.fromInputStream(ev ->            
+                        new DownloadResponse(new ByteArrayInputStream(pdf),     
+                                nombreArchivo, "application/pdf", pdf.length)));
+                lnkPdf.setText("📄 Descargar PDF " + emitida.getNumero());      
+                lnkPdf.setVisible(true);                                        
+
+
                 boletaActual = new Boleta();
                 gridDetalle.setItems(boletaActual.getDetalles());
                 lblTotal.setText("Total: S/ 0.00");
@@ -145,6 +170,8 @@ public class BoletaView extends VerticalLayout {
         });
 
         add(btnEmitir);
+        add(btnEmitir);
+        add(lnkPdf);
 
     }
 
