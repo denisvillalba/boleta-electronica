@@ -16,6 +16,7 @@ import com.google.cloud.firestore.Firestore;
 import java.util.Map;
 import com.google.cloud.firestore.DocumentReference;
 import com.google.cloud.firestore.DocumentSnapshot;
+import java.time.ZoneId;
 
 @Service
 public class BoletaService {
@@ -23,6 +24,8 @@ public class BoletaService {
     private static final String SERIE = "B001";
     private static final DateTimeFormatter FORMATO_FECHA =
             DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
+    
+    private static final ZoneId ZONA_LIMA = ZoneId.of("America/Lima");
 
     private final List<Boleta> boletas = new ArrayList<>();
     private final ProductoService productoService;
