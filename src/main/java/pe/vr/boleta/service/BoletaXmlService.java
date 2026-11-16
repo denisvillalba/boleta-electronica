@@ -11,6 +11,9 @@ import org.w3c.dom.Element;
 
 import java.io.StringWriter;
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+
 import javax.xml.transform.OutputKeys;
 import javax.xml.transform.Transformer;
 import javax.xml.transform.TransformerFactory;
@@ -28,8 +31,12 @@ public class BoletaXmlService {
     private static final String NS_CBC =
             "urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2";
 
+    // Formatos de fecha: el de la boleta (entrada) y los de la SUNAT (salida)
+    private static final DateTimeFormatter FORMATO_BOLETA = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
+    private static final DateTimeFormatter FECHA_SUNAT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+    private static final DateTimeFormatter HORA_SUNAT = DateTimeFormatter.ofPattern("HH:mm:ss");
+
     // Recibe una boleta y devuelve su XML (UBL 2.1) como texto
-        // Recibe una boleta y devuelve su XML (UBL 2.1) como texto
     public String generar(Boleta boleta) {
         try {
             // 1. Documento XML vacío
@@ -42,6 +49,25 @@ public class BoletaXmlService {
             invoice.setAttributeNS("http://www.w3.org/2000/xmlns/", "xmlns:cac", NS_CAC);
             invoice.setAttributeNS("http://www.w3.org/2000/xmlns/", "xmlns:cbc", NS_CBC);
             doc.appendChild(invoice);
+
+            
+            // 3. Cabecera: versión UBL, versión SUNAT y número de la boleta
+            cbc(doc, invoice, "UBLVersionID", "2.1");
+            cbc(doc, invoice, "CustomizationID", "2.0");
+            cbc(doc, invoice, "ID", boleta.getNumero());
+            
+            // 4. Fecha y hora de emisión (formato SUNAT)
+            LocalDateTime fechaHora = LocalDateTime.parse(boleta.getFecha(), FORMATO_BOLETA);
+            cbc(doc, invoice, "IssueDate", fechaHora.format(FECHA_SUNAT));
+            cbc(doc, invoice, "IssueTime", fechaHora.format(HORA_SUNAT));
+
+            
+            // 5. Tipo de comprobante (03 = boleta) y tipo de operación (0101 = venta interna)
+            Element tipo = cbc(doc, invoice, "InvoiceTypeCode", "03");
+            tipo.setAttribute("listID", "0101");
+
+            // 6. Moneda (PEN = soles)
+            cbc(doc, invoice, "DocumentCurrencyCode", "PEN");
 
             return aTexto(doc);
 
@@ -60,6 +86,14 @@ public class BoletaXmlService {
         StringWriter salida = new StringWriter();
         t.transform(new DOMSource(doc), new StreamResult(salida));
         return salida.toString();
+    }
+
+    // Crea <cbc:nombre>valor</cbc:nombre> y lo mete dentro de "padre"
+    private Element cbc(Document doc, Element padre, String nombre, String valor) {
+        Element e = doc.createElementNS(NS_CBC, "cbc:" + nombre);
+        e.setTextContent(valor);
+        padre.appendChild(e);
+        return e;
     }
 
 }

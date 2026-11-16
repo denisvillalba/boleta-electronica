@@ -16,6 +16,7 @@ public class BoletaXmlServiceTest {
         // 1. Boleta de ejemplo (por ahora solo el número)
         Boleta boleta = new Boleta();
         boleta.setNumero("B001-00000001");
+        boleta.setFecha("15/11/2026 21:10");
 
         // 2. Pedimos al servicio que arme el XML
         BoletaXmlService servicio = new BoletaXmlService();
