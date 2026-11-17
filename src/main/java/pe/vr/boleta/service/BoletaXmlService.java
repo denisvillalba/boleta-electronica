@@ -4,6 +4,8 @@ import org.springframework.stereotype.Service;
 
 import pe.vr.boleta.model.Boleta;
 
+import org.springframework.beans.factory.annotation.Value;
+
 import javax.xml.parsers.DocumentBuilderFactory;
 
 import org.w3c.dom.Document;
@@ -33,6 +35,20 @@ public class BoletaXmlService {
 
     // Formatos de fecha: el de la boleta (entrada) y los de la SUNAT (salida)
     private static final DateTimeFormatter FORMATO_BOLETA = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
+    
+    // Datos del negocio (emisor), leídos de application.properties
+    private final String negocioNombre;
+    private final String negocioRuc;
+    private final String negocioDireccion;
+
+    public BoletaXmlService(@Value("${negocio.nombre}") String negocioNombre,
+                            @Value("${negocio.ruc}") String negocioRuc,
+                            @Value("${negocio.direccion}") String negocioDireccion) {
+        this.negocioNombre = negocioNombre;          // ej. "Mi Negocio de Prueba"
+        this.negocioRuc = negocioRuc;                // ej. "20123456789"
+        this.negocioDireccion = negocioDireccion;    // ej. "Av. ..., Huancayo"
+    }
+
     private static final DateTimeFormatter FECHA_SUNAT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
     private static final DateTimeFormatter HORA_SUNAT = DateTimeFormatter.ofPattern("HH:mm:ss");
 
@@ -69,6 +85,22 @@ public class BoletaXmlService {
             // 6. Moneda (PEN = soles)
             cbc(doc, invoice, "DocumentCurrencyCode", "PEN");
 
+
+            // 7. Emisor (el negocio): RUC, razón social y dirección
+            Element proveedor = cac(doc, invoice, "AccountingSupplierParty");
+            Element party = cac(doc, proveedor, "Party");
+
+            Element identificacion = cac(doc, party, "PartyIdentification");
+            Element ruc = cbc(doc, identificacion, "ID", negocioRuc);
+            ruc.setAttribute("schemeID", "6");                      // 6 = tipo de documento RUC
+
+            Element legal = cac(doc, party, "PartyLegalEntity");
+            cbc(doc, legal, "RegistrationName", negocioNombre);     // razón social
+            Element domicilio = cac(doc, legal, "RegistrationAddress");
+            cbc(doc, domicilio, "AddressTypeCode", "0000");         // 0000 = domicilio fiscal
+            Element lineaDir = cac(doc, domicilio, "AddressLine");
+            cbc(doc, lineaDir, "Line", negocioDireccion);           // dirección
+
             return aTexto(doc);
 
         } catch (Exception e) {
@@ -94,6 +126,13 @@ public class BoletaXmlService {
         e.setTextContent(valor);
         padre.appendChild(e);
         return e;
+    }
+
+    // Crea <cac:nombre> (una "caja" sin valor que agrupa otras etiquetas) dentro de "padre"
+    private Element cac(Document doc, Element padre, String nombre) {
+        Element e = doc.createElementNS(NS_CAC, "cac:" + nombre);   // ej. <cac:Party>
+        padre.appendChild(e);                                       // lo mete dentro del padre
+        return e;                                                   // lo devuelve para meterle hijos
     }
 
 }
