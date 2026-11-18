@@ -19,7 +19,7 @@ public class BoletaXmlServiceTest {
         boleta.setFecha("15/11/2026 21:10");
 
         // 2. Pedimos al servicio que arme el XML
-                BoletaXmlService servicio = new BoletaXmlService(
+        BoletaXmlService servicio = new BoletaXmlService(
                 "Mi Negocio de Prueba",        // negocioNombre
                 "20123456789",                 // negocioRuc (11 dígitos)
                 "Av. Prueba 123, Huancayo");   // negocioDireccion
