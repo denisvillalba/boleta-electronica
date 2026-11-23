@@ -99,10 +99,25 @@ public class BoletaXmlService {
             Element domicilio = cac(doc, legal, "RegistrationAddress");
             cbc(doc, domicilio, "AddressTypeCode", "0000");         // 0000 = domicilio fiscal
             Element lineaDir = cac(doc, domicilio, "AddressLine");
-            cbc(doc, lineaDir, "Line", negocioDireccion);           // dirección
+            cbc(doc, lineaDir, "Line", negocioDireccion);           // direcció
+
+
+            // 8. Cliente (AccountingCustomerParty): a quién se vendió
+            String dni = boleta.getClienteDni();                              // DNI escrito en la pantalla (puede venir null = vacío)
+            boolean hayDni = dni != null && !dni.isBlank();                   // true (verdadero) si sí se llenó el DNI
+            String nombre = boleta.getClienteNombre();                        // nombre del cliente (puede venir null)
+
+            Element cliente = cac(doc, invoice, "AccountingCustomerParty");   // caja del cliente, dentro de la raíz <Invoice>
+            Element partyCli = cac(doc, cliente, "Party");                    // la persona que compra
+            Element idCli = cac(doc, partyCli, "PartyIdentification");        // su documento de identidad
+            Element numDoc = cbc(doc, idCli, "ID", hayDni ? dni : "-");       // número de DNI, o "-" si no hay
+            numDoc.setAttribute("schemeID", hayDni ? "1" : "-");              // tipo de documento: 1 = DNI, "-" = clientes varios
+            Element legalCli = cac(doc, partyCli, "PartyLegalEntity");        // caja de datos legales
+            cbc(doc, legalCli, "RegistrationName",
+            (nombre != null && !nombre.isBlank()) ? nombre : "VARIOS");       // nombre del cliente, o VARIOS si está vacío
 
             return aTexto(doc);
-
+            
         } catch (Exception e) {
             throw new RuntimeException("Error al generar el XML: " + e.getMessage(), e);
         }

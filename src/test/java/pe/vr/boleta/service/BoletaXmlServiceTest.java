@@ -31,5 +31,27 @@ public class BoletaXmlServiceTest {
         // 4. Comprobamos que tenga la raíz <Invoice>
         assertTrue(xml.contains("Invoice"));
     }
+
+    @Test
+    void generaXmlConDni() throws Exception {
+        // 1. Boleta de ejemplo CON datos del cliente
+        Boleta boleta = new Boleta();
+        boleta.setNumero("B001-00000002");
+        boleta.setFecha("22/11/2026 10:30");
+        boleta.setClienteDni("12345678");                 // DNI del cliente (8 dígitos)
+        boleta.setClienteNombre("Juan Perez");            // nombre del cliente
+
+        // 2. Pedimos al servicio que arme el XML
+        BoletaXmlService servicio = new BoletaXmlService(
+                "Mi Negocio de Prueba", "20123456789", "Av. Prueba 123, Huancayo");
+        String xml = servicio.generar(boleta);
+
+        // 3. Lo guardamos aparte para no pisar el XML sin DNI
+        Files.writeString(Path.of("target/boleta-prueba-dni.xml"), xml);
+
+        // 4. Comprobamos el bloque del cliente
+        assertTrue(xml.contains("<cbc:ID schemeID=\"1\">12345678</cbc:ID>"));            // 1 = DNI + el número
+        assertTrue(xml.contains("<cbc:RegistrationName>Juan Perez</cbc:RegistrationName>")); // nombre del cliente
+    }
     
 }
