@@ -53,5 +53,27 @@ public class BoletaXmlServiceTest {
         assertTrue(xml.contains("<cbc:ID schemeID=\"1\">12345678</cbc:ID>"));            // 1 = DNI + el número
         assertTrue(xml.contains("<cbc:RegistrationName>Juan Perez</cbc:RegistrationName>")); // nombre del cliente
     }
+
+    @Test
+    void generaXmlConTotales() throws Exception {
+        // 1. Boleta de ejemplo con un total de S/ 118.00 (IGV incluido)
+        Boleta boleta = new Boleta();
+        boleta.setNumero("B001-00000003");
+        boleta.setFecha("24/11/2026 15:30");
+        boleta.setTotal(118.0);                                     // total cobrado al cliente
+
+        // 2. Pedimos al servicio que arme el XML
+        BoletaXmlService servicio = new BoletaXmlService(
+                "Mi Negocio de Prueba", "20123456789", "Av. Prueba 123, Huancayo");
+        String xml = servicio.generar(boleta);
+
+        // 3. Lo guardamos aparte para revisarlo
+        Files.writeString(Path.of("target/boleta-prueba-totales.xml"), xml);
+
+        // 4. Comprobamos que los montos cuadren: 100.00 + 18.00 = 118.00
+        assertTrue(xml.contains("<cbc:TaxableAmount currencyID=\"PEN\">100.00</cbc:TaxableAmount>")); // base sin IGV
+        assertTrue(xml.contains("<cbc:TaxAmount currencyID=\"PEN\">18.00</cbc:TaxAmount>"));          // IGV
+        assertTrue(xml.contains("<cbc:PayableAmount currencyID=\"PEN\">118.00</cbc:PayableAmount>")); // total a pagar
+    }
     
 }
