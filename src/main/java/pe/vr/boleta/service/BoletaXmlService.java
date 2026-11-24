@@ -16,6 +16,9 @@ import java.io.StringWriter;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
+import java.math.BigDecimal;       // BigDecimal (número decimal exacto): para montos en soles sin errores de redondeo
+import java.math.RoundingMode;     // RoundingMode (regla de redondeo): HALF_UP = redondeo comercial (0.005 → 0.01)
+
 import javax.xml.transform.OutputKeys;
 import javax.xml.transform.Transformer;
 import javax.xml.transform.TransformerFactory;
@@ -116,6 +119,30 @@ public class BoletaXmlService {
             cbc(doc, legalCli, "RegistrationName",
             (nombre != null && !nombre.isBlank()) ? nombre : "VARIOS");       // nombre del cliente, o VARIOS si está vacío
 
+            // 9. Montos (mismo cálculo que el PDF): total con IGV → gravada (sin IGV) e IGV
+            BigDecimal total = new BigDecimal(String.valueOf(boleta.getTotal()))   // importe cobrado, ej. 118.0
+                    .setScale(2, RoundingMode.HALF_UP);                            // con 2 decimales → 118.00
+            BigDecimal gravada = total.divide(new BigDecimal("1.18"), 2, RoundingMode.HALF_UP); // sin IGV → 100.00
+            BigDecimal igv = total.subtract(gravada);                              // IGV por resta → 18.00 (siempre cuadra)
+
+            // 10. Impuestos (cac:TaxTotal): cuánto IGV tiene la boleta
+            Element taxTotal = cac(doc, invoice, "TaxTotal");                // caja: total de impuestos
+            monto(doc, taxTotal, "TaxAmount", igv);                          // IGV total → 18.00
+            Element subtotal = cac(doc, taxTotal, "TaxSubtotal");            // detalle del impuesto
+            monto(doc, subtotal, "TaxableAmount", gravada);                  // base imponible (sin IGV) → 100.00
+            monto(doc, subtotal, "TaxAmount", igv);                          // IGV de esa base → 18.00
+            Element categoria = cac(doc, subtotal, "TaxCategory");           // categoría del impuesto
+            Element esquema = cac(doc, categoria, "TaxScheme");              // qué impuesto es
+            cbc(doc, esquema, "ID", "1000");                                 // 1000 = IGV (catálogo 05 SUNAT)
+            cbc(doc, esquema, "Name", "IGV");                                // nombre del tributo
+            cbc(doc, esquema, "TaxTypeCode", "VAT");                         // VAT = impuesto al valor agregado
+
+            // 11. Totales legales (cac:LegalMonetaryTotal): cuánto se cobra
+            Element totales = cac(doc, invoice, "LegalMonetaryTotal");     // caja: totales de la boleta
+            monto(doc, totales, "LineExtensionAmount", gravada);           // valor de venta sin IGV → 100.00
+            monto(doc, totales, "TaxInclusiveAmount", total);              // total con IGV → 118.00
+            monto(doc, totales, "PayableAmount", total);                   // importe a pagar → 118.00
+
             return aTexto(doc);
             
         } catch (Exception e) {
@@ -147,7 +174,17 @@ public class BoletaXmlService {
     private Element cac(Document doc, Element padre, String nombre) {
         Element e = doc.createElementNS(NS_CAC, "cac:" + nombre);   // ej. <cac:Party>
         padre.appendChild(e);                                       // lo mete dentro del padre
-        return e;                                                   // lo devuelve para meterle hijos
+        return e;
     }
 
+    // Crea <cbc:nombre currencyID="PEN">monto</cbc:nombre> con 2 decimales (formato SUNAT)
+    private Element monto(Document doc, Element padre, String nombre, BigDecimal valor) {
+        String texto = valor.setScale(2, RoundingMode.HALF_UP).toPlainString(); // 18 → "18.00"
+        Element e = cbc(doc, padre, nombre, texto);                             // reutiliza cbc() para crear la etiqueta
+        e.setAttribute("currencyID", "PEN");                                    // atributo moneda: soles
+        return e;                                                               // lo devuelve por si hace falta
+    }
+               
+        // lo devuelve para meterle hijos
+    
 }
